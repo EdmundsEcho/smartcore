@@ -537,9 +537,21 @@ impl<TX: Number + FloatNumber + RealNumber, TY: Number + Ord, X: Array2<TX>, Y: 
         self.coefficients.as_ref().unwrap()
     }
 
+    /// Get estimated regression coefficients returning a Vec<T>
+    pub fn coefficients_as_vec(&self) -> Vec<TX> {
+        let c = self.coefficients().get_row(0);
+        let c = c.as_ref();
+        c.into()
+    }
+
     /// Get estimate of intercept, this create a sharable reference
     pub fn intercept(&self) -> &X {
         self.intercept.as_ref().unwrap()
+    }
+
+    /// Get estimated intercept
+    pub fn intercept_as_value(&self) -> TX {
+        *self.intercept().get((0, 0))
     }
 
     /// Get classes, this create a sharable reference

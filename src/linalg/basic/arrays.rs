@@ -807,6 +807,11 @@ pub trait Array1<T: Debug + Display + Copy + Sized>: MutArrayView1<T> + Sized + 
     where
         Self: Sized;
     ///
+    fn from_row(slice: &dyn ArrayView1<T>) -> Self {
+        let ncols = slice.shape();
+        Self::from_iterator(slice.iterator(0).cloned(), ncols)
+    }
+    ///
     fn zeros(len: usize) -> Self
     where
         T: Number,
@@ -1584,6 +1589,17 @@ pub trait Array2<T: Debug + Display + Copy + Sized>: MutArrayView2<T> + Sized + 
     {
         (self.sub(other)).iterator(0).all(|v| v.abs() <= error)
             && (self.sub(other)).iterator(1).all(|v| v.abs() <= error)
+    }
+}
+
+impl<T> std::convert::From<Box<dyn ArrayView1<T>>> for Vec<T> {
+    fn from(slice: Box<dyn ArrayView1<T>>) -> Self {
+        slice.as_ref().into()
+    }
+}
+impl<T> std::convert::From<&dyn ArrayView1<T>> for Vec<T> {
+    fn from(slice: &dyn ArrayView1<T>) -> Self {
+        slice.into()
     }
 }
 
