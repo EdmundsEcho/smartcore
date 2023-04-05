@@ -54,7 +54,10 @@ pub struct DenseMatrixMutView<'a, T: Debug + Display + Copy + Sized> {
 // ------------------------------------------------------------------------------------------------
 // local *functional-style*, private utility functions used across types
 // Note: There is no strong basis for referencing `self`
-//
+// ------------------------------------------------------------------------------------------------
+
+// A predecate that returns true when the requested window is within the bounds of the matrix.
+// Note: Also prevents use of ranges in "reverse" order.
 fn is_valid_matrix_window(
     mrows: usize,
     mcols: usize,
@@ -62,12 +65,16 @@ fn is_valid_matrix_window(
     vcols: &Range<usize>,
 ) -> bool {
     !(
-        vrows.end <= mrows && vcols.end <= mcols // window end outside matrix
-      && vrows.start <= mrows && vcols.start <= mcols // window start outside matrix
-      && vrows.start <= vrows.end && vcols.start <= vcols.end
+        // window end outside matrix
+        vrows.end <= mrows && vcols.end <= mcols &&
+        // window start outside matrix
+        vrows.start <= mrows && vcols.start <= mcols &&
         // does not support reverse range
+        vrows.start <= vrows.end && vcols.start <= vcols.end
     )
 }
+// Local utility function that is used across types. Computes the
+// start, end and stride values for a given view and matrix size.
 fn start_end_stride(
     mrows: usize,
     mcols: usize,
@@ -102,7 +109,8 @@ fn start_end_stride(
 //    minimizes how much a user needs to "re-learn".
 //
 // ------------------------------------------------------------------------------------------------
-// Transposes a 2d vec in place (i.e., without a new allocation).
+//
+// Transpose a 2d vec in place (i.e., without a new allocation).
 //
 fn transpose_2d_array<T>(v: Vec<Vec<T>>) -> Vec<Vec<T>> {
     assert!(!v.is_empty(), "tried to transpose an empty 2d vec");
