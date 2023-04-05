@@ -137,7 +137,8 @@ impl<'a, T: Debug + Display + Copy + Sized> DenseMatrixView<'a, T> {
 
         if is_valid_matrix_window(mrows, mcols, &vrows, &vcols) {
             Err(Failed::input(&format!(
-                "The specified window is outside of the matrix range"
+                "The specified window is outside the bounds of the matrix with shape: ({}, {})",
+                mrows, mcols
             )))
         } else {
             let (start, end, stride) =
