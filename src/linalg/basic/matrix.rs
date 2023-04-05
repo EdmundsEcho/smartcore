@@ -51,28 +51,22 @@ pub struct DenseMatrixMutView<'a, T: Debug + Display + Copy + Sized> {
     column_major: bool,
 }
 
-// functional utility functions used across types
+// ------------------------------------------------------------------------------------------------
+// local *functional-style*, private utility functions used across types
+// Note: There is no strong basis for referencing `self`
+//
 fn is_valid_matrix_window(
     mrows: usize,
     mcols: usize,
     vrows: &Range<usize>,
     vcols: &Range<usize>,
 ) -> bool {
-    debug_assert!(
-        vrows.end <= mrows && vcols.end <= mcols,
-        "The window end is outside of the matrix range"
-    );
-    debug_assert!(
-        vrows.start <= mrows && vcols.start <= mcols,
-        "The window start is outside of the matrix range"
-    );
-    debug_assert!(
-        // depends on a properly formed range
-        vrows.start <= vrows.end && vcols.start <= vcols.end,
-        "Invalid range: start <= end failed"
-    );
-
-    !(vrows.end <= mrows && vcols.end <= mcols && vrows.start <= mrows && vcols.start <= mcols)
+    !(
+        vrows.end <= mrows && vcols.end <= mcols // window end outside matrix
+      && vrows.start <= mrows && vcols.start <= mcols // window start outside matrix
+      && vrows.start <= vrows.end && vcols.start <= vcols.end
+        // does not support reverse range
+    )
 }
 fn start_end_stride(
     mrows: usize,
@@ -96,6 +90,34 @@ fn start_end_stride(
     };
     (start, end, stride)
 }
+// ------------------------------------------------------------------------------------------------
+// Design question:
+// 1. This allows code reuse
+// 2. The code itself may not be much better than what was already in place.
+//    However, in my experience using iterators makes it easier for the compiler
+//    to optimize to code.
+// 3. This positions the crate to move to a specialized package for manipulating
+//    the shape of the data.  A great case in point re design, the `Axum` crate.
+//    It reuses well-know, and highly standard crates "under the hood".  It
+//    minimizes how much a user needs to "re-learn".
+//
+// ------------------------------------------------------------------------------------------------
+// Transposes a 2d vec in place (i.e., without a new allocation).
+//
+fn transpose_2d_array<T>(v: Vec<Vec<T>>) -> Vec<Vec<T>> {
+    assert!(!v.is_empty(), "tried to transpose an empty 2d vec");
+    let cols = v[0].len();
+    let mut row_iters: Vec<_> = v.into_iter().map(|n| n.into_iter()).collect();
+    (0..cols)
+        .map(|_| {
+            row_iters
+                .iter_mut()
+                .map(|n| n.next().unwrap())
+                .collect::<Vec<T>>()
+        })
+        .collect()
+}
+// ------------------------------------------------------------------------------------------------
 
 impl<'a, T: Debug + Display + Copy + Sized> DenseMatrixView<'a, T> {
     fn new(
@@ -239,10 +261,6 @@ impl<T: Debug + Display + Copy + Sized> DenseMatrix<T> {
         values: Vec<T>,
         column_major: bool,
     ) -> Result<Self, Failed> {
-        debug_assert!(
-            nrows * ncols == values.len(),
-            "Instantiatint DenseMatrix requires nrows * ncols == values.len()"
-        );
         let data_len = values.len();
         if nrows * ncols != values.len() {
             Err(Failed::input(&format!(
@@ -265,31 +283,17 @@ impl<T: Debug + Display + Copy + Sized> DenseMatrix<T> {
 
     /// New instance of `DenseMatrix` from 2d vector.
     pub fn from_2d_vec(values: &Vec<Vec<T>>) -> Result<Self, Failed> {
-        debug_assert!(
-            !(values.is_empty() || values[0].is_empty()),
-            "Instantiating DenseMatrix requires a non-empty 2d_vec"
-        );
-
         if values.is_empty() || values[0].is_empty() {
             Err(Failed::input(&format!(
                 "The 2d vec provided is empty; cannot instantiate the matrix"
             )))
         } else {
             let nrows = values.len();
-            let ncols = values
-                .first()
-                .unwrap_or_else(|| {
-                    panic!("Invalid state: Cannot create 2d matrix from an empty vector")
-                })
-                .len();
-            let mut m_values = Vec::with_capacity(nrows * ncols);
-
-            for c in 0..ncols {
-                for r in values.iter().take(nrows) {
-                    m_values.push(r[c])
-                }
-            }
-
+            let ncols = values[0].len();
+            let m_values = transpose_2d_array(values.to_owned())
+                .into_iter()
+                .flatten()
+                .collect();
             DenseMatrix::new(nrows, ncols, m_values, true)
         }
     }
@@ -384,14 +388,13 @@ where
 impl<T: Debug + Display + Copy + Sized> Array<T, (usize, usize)> for DenseMatrix<T> {
     fn get(&self, pos: (usize, usize)) -> &T {
         let (row, col) = pos;
-        let idx_target = col * self.nrows + row;
 
-        if row >= self.nrows || col >= self.ncols {
-            panic!(
-                "Invalid index ({},{}) for {}x{} matrix",
-                row, col, self.nrows, self.ncols
-            );
-        }
+        // removed the if statement; the fork can prevent optimization
+        assert!(
+            !(row >= self.nrows || col >= self.ncols),
+            "Tried to get a value out or range"
+        );
+
         if self.column_major {
             &self.values[col * self.nrows + row]
         } else {
